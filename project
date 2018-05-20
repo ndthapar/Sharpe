@@ -137,16 +137,3 @@ filtered_return.plot(kind='scatter',y='GLD US Equity', x='SPY US Equity',title='
 filtered_return.plot(kind='scatter',y='GDXJ US Equity', x='SPY US Equity',title='% Return Scatterplot')
 filtered_return.plot(kind='scatter',y='H15X10YR Index', x='SPY US Equity',title='% Return Scatterplot')
 
-
-5a) I calculated alpha via the CAPM formula using returns within a window of 30 day trading days. For the riskfree rate I used the H15X10YR data as a proxy (although 90 day T-bill would have been ideal), beta was precalculated, SPY was the market return. Beta is covariance/variance of two assets, in this context between SPY and whatever asset. I see Beta as an indicator of the direction an asset moves relative to the market(i.e reflected by +1 vs -1), and the relative magnitude of that move (i.e reflected by 0.7 vs 1.2). It is often used as a proxy of risk in various calculations.
-
-5b) Using the information available I can infer the behavior of GLD, GDXJ, and H15X10YR relative to the SPY. The mean betas of the three over the 8 years of data provided:
-GLD = -0.011
-GDXJ = 0.075
-H15X10YR = 0.019
-
-These would indicate that all three assets were relatively uncorrelated to the market over an 8 year holding period and that GLD behaved slightly inverse to the market. Overall I believe this simply reflects the different asset categories/exposure type that GLD,GDXJ, and H15X10YR fall under -- all less volatile investments than the SPY. 
-
-5c) GDXJ vs. GLD Performance can be approximated via an alpha calculation between the two assets. GDXJ outperforms when its Alpha relative to GLD is positive, and underperforms when its negative. This can be calculated by running the predefined 'alpha' function above between filtered_return['GDXJ Equity'] and filtered_return['GLD Equity'] and adjusting to desired windows(1 month, 3 month, 1 year) etc.
-
-Im honestly not sure how to maximize sharpe ratio's in a forward looking fashion. The only thing I can think of is creating a weighted distribution of past sharpes (from a relevant holding period,i.e recent 3 months) and trading into a position when its current sharpe enters a higher quartile of its past range(quartile cutoff predetermined manually) This part confuses me...
