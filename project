@@ -1,0 +1,152 @@
+import numpy as np
+import pandas as pd
+import matplotlib.pyplot as plt
+import seaborn as sns
+import statsmodels.formula.api as sm
+sns.set_style("whitegrid")
+import pandas_datareader.data as web
+import datetime
+
+
+
+#import csv into dataframe
+SPYdf= pd.read_csv('SPY.csv')
+GLDdf= pd.read_csv('GLD.csv')
+
+#drops NaN rows first pass
+SPYdfnew = SPYdf[np.isfinite(SPYdf['px_last(start=2010-01-04,end=2018-04-06,frq=D)'])]
+GLDdfnew = GLDdf[np.isfinite(GLDdf['px_last(start=2010-01-04,end=2018-04-06,frq=D)'])]
+
+#Renames columns
+GLDdfnew.columns=['ID', 'Date', 'Currency', 'Price']
+SPYdfnew.columns=['ID', 'Date', 'Currency', 'Price']
+
+
+#converts to datetime index
+GLDdfnew.set_index(pd.to_datetime(GLDdfnew['Date']), inplace=True)
+SPYdfnew.set_index(pd.to_datetime(SPYdfnew['Date']), inplace=True)
+
+#Drops currency column 
+del GLDdfnew['Currency']
+del SPYdfnew['Currency']
+
+#Pivots dataframe
+GLD_pivot = GLDdfnew.pivot(index='Date', columns='ID', values='Price')
+SPY_pivot = SPYdfnew.pivot(index='Date', columns='ID', values='Price')
+
+#drops all remaining NaN rows
+merge= pd.concat([SPY_pivot, GLD_pivot], axis=1)
+merge_new = merge.dropna(axis=0, how='any')
+merge_new
+
+print(merge_new.head())
+print(merge_new.dtypes)
+
+#new dataframe with %daily return
+daily_return = merge_new.pct_change(1)
+daily_return['Riskfree']= merge_new['H15X10YR Index']
+
+
+
+# Calculate rolling Sharpe ratio of IWM,SPY,VXX. NOTE: sharpe ratio operates on 
+# 1 year window starting from most recent date, first year in time series yielded NaN, was dropped.
+
+def my_rolling_sharpe(y):
+    return np.sqrt(252) * (y.mean() / y.std())
+
+daily_return['IWM US Equity Sharpe'] = daily_return['IWM US Equity'].rolling(252).apply(my_rolling_sharpe)
+daily_return['SPY US Equity Sharpe'] = daily_return['SPY US Equity'].rolling(252).apply(my_rolling_sharpe)
+daily_return['VXX US Equity Sharpe'] = daily_return['VXX US Equity'].rolling(252).apply(my_rolling_sharpe)
+
+
+#Question 2 Table and Graphs
+Question_2 = daily_return.filter(['IWM US Equity','SPY US Equity','VXX US Equity','IWM US Equity Sharpe','SPY US Equity Sharpe','VXX US Equity Sharpe'], axis=1)
+Question_2 = Question_2.rename(columns = {'IWM US Equity':'IWM % Return'})
+Question_2=Question_2.rename(columns = {'SPY US Equity':'SPY % Return'})
+Question_2=Question_2.rename(columns = {'VXX US Equity':'VXX % Return'})
+Question_2 = Question_2.dropna(how='any')
+Question_2['IWM % Return']= Question_2['IWM % Return']*100
+Question_2['SPY % Return']= Question_2['SPY % Return']*100
+Question_2['VXX % Return']= Question_2['VXX % Return']*100
+
+print(Question_2.head())
+
+print(Question_2.plot(figsize=(20,20), title='% Returns and Sharpe Ratios'))
+
+
+
+#Calculates Rolling % return on an annual windows, drops year 1 values by definition
+Question_3 = daily_return.filter(['GLD US Equity','GDXJ US Equity','H15X10YR Index'], axis=1)
+Question_3['GLD Rolling Annual % Return']= merge_new['GLD US Equity'].pct_change(252)*100
+Question_3['GDXJ Rolling Annual % Return']= merge_new['GDXJ US Equity'].pct_change(252)*100
+Question_3['H15x10YR Rolling Annual % Return']= merge_new['H15X10YR Index'].pct_change(252)*100
+Question_3['SPY Rolling Annual % Return']= merge_new['SPY US Equity'].pct_change(252)*100
+Question_3= Question_3.dropna(axis=0, how='any')
+Question_3= Question_3.reset_index()
+
+#Question 3 dataframe creation/editing
+filtered_return = daily_return.filter(['SPY US Equity','GLD US Equity','GDXJ US Equity', 'H15X10YR Index','Riskfree'])
+filtered_return = filtered_return.dropna(how='any')
+
+
+
+#Rolling Beta Function 30-day window
+def beta(x): 
+    covariance = x.rolling(30).cov(other=filtered_return['SPY US Equity'])
+    variance = x.rolling(30).var()
+    return covariance/variance
+
+
+
+filtered_return['GLD Beta'] = beta(filtered_return['GLD US Equity'])
+filtered_return['GDXJ Beta']= beta(filtered_return['GDXJ US Equity'])
+filtered_return['H15X10YR Beta']= beta(filtered_return['H15X10YR Index'])
+filtered_return= filtered_return*100
+filtered_return= filtered_return.reset_index()
+filtered_return= filtered_return.dropna(how='any')
+filtered_return['GLD Beta'] = filtered_return['GLD Beta']/100
+filtered_return['GDXJ Beta']= filtered_return['GDXJ Beta']/100
+filtered_return['H15X10YR Beta'] = filtered_return['H15X10YR Beta']/100
+filtered_return['Riskfree']=filtered_return['Riskfree']/100
+
+
+
+def alpha(x,y):
+    r= x.shift(30) -x 
+    rf= filtered_return['Riskfree']
+    bta= y
+    rm= filtered_return['SPY US Equity']
+    return r-rf-bta*(rm-rf)
+
+
+filtered_return['GLD Alpha'] = alpha(filtered_return['GLD US Equity'],filtered_return['GLD Beta'])
+filtered_return['GDXJ Alpha'] = alpha(filtered_return['GDXJ US Equity'],filtered_return['GDXJ Beta'])
+filtered_return['H15X10YR Alpha'] = alpha(filtered_return['H15X10YR Index'],filtered_return['H15X10YR Beta'])
+
+filtered_return=filtered_return.dropna(how='any')
+
+print(filtered_return.head())
+
+print(filtered_return['GLD Beta'].mean())
+print(filtered_return['GDXJ Beta'].mean())
+print(filtered_return['H15X10YR Beta'].mean())
+
+
+
+filtered_return.plot(kind='scatter',y='GLD US Equity', x='SPY US Equity',title='% Return Scatterplot')
+filtered_return.plot(kind='scatter',y='GDXJ US Equity', x='SPY US Equity',title='% Return Scatterplot')
+filtered_return.plot(kind='scatter',y='H15X10YR Index', x='SPY US Equity',title='% Return Scatterplot')
+
+
+5a) I calculated alpha via the CAPM formula using returns within a window of 30 day trading days. For the riskfree rate I used the H15X10YR data as a proxy (although 90 day T-bill would have been ideal), beta was precalculated, SPY was the market return. Beta is covariance/variance of two assets, in this context between SPY and whatever asset. I see Beta as an indicator of the direction an asset moves relative to the market(i.e reflected by +1 vs -1), and the relative magnitude of that move (i.e reflected by 0.7 vs 1.2). It is often used as a proxy of risk in various calculations.
+
+5b) Using the information available I can infer the behavior of GLD, GDXJ, and H15X10YR relative to the SPY. The mean betas of the three over the 8 years of data provided:
+GLD = -0.011
+GDXJ = 0.075
+H15X10YR = 0.019
+
+These would indicate that all three assets were relatively uncorrelated to the market over an 8 year holding period and that GLD behaved slightly inverse to the market. Overall I believe this simply reflects the different asset categories/exposure type that GLD,GDXJ, and H15X10YR fall under -- all less volatile investments than the SPY. 
+
+5c) GDXJ vs. GLD Performance can be approximated via an alpha calculation between the two assets. GDXJ outperforms when its Alpha relative to GLD is positive, and underperforms when its negative. This can be calculated by running the predefined 'alpha' function above between filtered_return['GDXJ Equity'] and filtered_return['GLD Equity'] and adjusting to desired windows(1 month, 3 month, 1 year) etc.
+
+Im honestly not sure how to maximize sharpe ratio's in a forward looking fashion. The only thing I can think of is creating a weighted distribution of past sharpes (from a relevant holding period,i.e recent 3 months) and trading into a position when its current sharpe enters a higher quartile of its past range(quartile cutoff predetermined manually) This part confuses me...
